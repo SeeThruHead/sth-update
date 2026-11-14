@@ -1,9 +1,9 @@
-use crate::brew::{Brew, Kind, Outdated, Service};
+use crate::brew::{self, Brew, Kind, Outdated, Service};
 use crate::config::Config;
 use crate::services::{Plan, Platform, Unit};
 use crate::shadow::{self, Shadow};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub const SELF: &str = "sth-update";
 
@@ -56,6 +56,7 @@ pub struct Context<'a> {
     pub brew: Brew,
     pub platform: Platform,
     pub services: Vec<Service>,
+    pub repo: PathBuf,
 }
 
 struct Outcome {
@@ -67,7 +68,8 @@ impl<'a> Context<'a> {
     pub fn open(config: &'a Config, home: &Path) -> Result<Context<'a>, String> {
         let brew = Brew::locate()?;
         let services = brew.services();
-        Ok(Context { config, brew, platform: Platform::current(home), services })
+        let repo = brew.tap_repo(&config.tap)?;
+        Ok(Context { config, brew, platform: Platform::current(home), services, repo })
     }
 
     pub fn kinds(&self) -> Vec<Kind> {
@@ -87,15 +89,31 @@ impl<'a> Context<'a> {
             .collect())
     }
 
-    pub fn outdated(&self) -> Result<Vec<Outdated>, String> {
-        let found: Result<Vec<Vec<Outdated>>, String> =
+    pub fn outdated(&self) -> (Vec<Outdated>, Vec<String>) {
+        let found: Vec<Result<Vec<Outdated>, String>> =
             self.kinds().iter().map(|kind| self.outdated_of(*kind)).collect();
-        Ok(found?.into_iter().flatten().filter(|item| !item.pinned).collect())
+        let items = found.iter().filter_map(|result| result.clone().ok()).flatten().filter(|item| !item.pinned);
+        let failures = found.iter().filter_map(|result| result.clone().err());
+        (items.collect(), failures.collect())
+    }
+
+    fn split_by_offer(&self, kind: Kind) -> Result<(Vec<String>, Vec<String>), String> {
+        let installed = self.brew.installed(&self.config.tap, kind)?;
+        Ok(installed.into_iter().partition(|tool| brew::offers(&self.repo, kind, tool)))
     }
 
     fn outdated_of(&self, kind: Kind) -> Result<Vec<Outdated>, String> {
-        let tools = self.brew.installed(&self.config.tap, kind)?;
-        self.brew.outdated(&self.config.tap, kind, &tools)
+        let (offered, _) = self.split_by_offer(kind)?;
+        self.brew.outdated(&self.config.tap, kind, &offered)
+    }
+
+    fn dropped_of(&self, kind: Kind) -> Vec<String> {
+        let dropped = self.split_by_offer(kind).map(|(_, dropped)| dropped).unwrap_or_default();
+        dropped.iter().map(|tool| format!("{tool} ({})", kind.noun())).collect()
+    }
+
+    pub fn dropped(&self) -> Vec<String> {
+        self.kinds().iter().flat_map(|kind| self.dropped_of(*kind)).collect()
     }
 
     fn running(&self, tool: &str) -> Vec<Unit> {
@@ -171,17 +189,16 @@ pub fn run(config: &Config, home: &Path, at: u64, by_daemon: bool) -> Report {
         Err(error) => return failed(at, error),
     };
     let refresh =
-        context.brew.refresh_tap(&config.tap).err().map(|error| format!("refreshing {} failed: {error}", config.tap));
-    let outdated = match context.outdated() {
-        Ok(outdated) => self_last(outdated),
-        Err(error) => return failed(at, error),
-    };
+        context.brew.refresh_tap(&context.repo).err().map(|error| format!("refreshing {} failed: {error}", config.tap));
+    let (outdated, unasked) = context.outdated();
+    let outdated = self_last(outdated);
     let outcomes: Vec<Outcome> = outdated.iter().map(|item| context.upgrade(item, at, by_daemon)).collect();
     let upgraded: Vec<Upgraded> = outcomes.iter().filter_map(|outcome| outcome.upgraded.clone()).collect();
     let installed = context.installed().unwrap_or_default();
     let shadowed: Vec<Shadow> = installed.iter().flat_map(|tool| context.shadows(tool, home)).collect();
     let step_failures = outcomes.iter().flat_map(|outcome| outcome.failures.clone());
-    let failures = refresh.into_iter().chain(step_failures).chain(in_the_way(&upgraded, &shadowed)).collect();
+    let failures =
+        refresh.into_iter().chain(unasked).chain(step_failures).chain(in_the_way(&upgraded, &shadowed)).collect();
     Report { at, upgraded, failures, shadowed }
 }
 

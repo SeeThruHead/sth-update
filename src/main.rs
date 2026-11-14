@@ -192,11 +192,11 @@ fn check() -> ExitCode {
         Ok(context) => context,
         Err(error) => return fail(&error),
     };
-    let surveyed = context.installed().and_then(|installed| context.outdated().map(|outdated| (installed, outdated)));
-    let (installed, outdated) = match surveyed {
-        Ok(surveyed) => surveyed,
+    let installed = match context.installed() {
+        Ok(installed) => installed,
         Err(error) => return fail(&error),
     };
+    let (outdated, unasked) = context.outdated();
     println!(
         "brew {}, tap {}, every {}",
         context.brew.bin.display(),
@@ -205,6 +205,8 @@ fn check() -> ExitCode {
     );
     println!("the tap is not refreshed by check, so outdated is as of the last run");
     installed.iter().for_each(|tool| println!("{}", tool_line(&context, &paths, tool, &outdated)));
+    section("installed but no longer in the tap, left alone", &context.dropped());
+    section("could not ask brew", &unasked);
     ExitCode::SUCCESS
 }
 

@@ -24,6 +24,20 @@ impl Kind {
         }
     }
 
+    fn folders(self) -> &'static [&'static str] {
+        match self {
+            Kind::Formula => &["Formula", "HomebrewFormula", ""],
+            Kind::Cask => &["Casks"],
+        }
+    }
+
+    pub fn noun(self) -> &'static str {
+        match self {
+            Kind::Formula => "formula",
+            Kind::Cask => "cask",
+        }
+    }
+
     fn key(self) -> &'static str {
         match self {
             Kind::Formula => "formulae",
@@ -63,6 +77,10 @@ pub fn short_name(full: &str) -> String {
 pub fn in_tap(listing: &str, tap: &str) -> Vec<String> {
     let prefix = format!("{}/", tap.to_lowercase());
     listing.lines().map(str::trim).filter(|line| line.to_lowercase().starts_with(&prefix)).map(short_name).collect()
+}
+
+pub fn offers(repo: &Path, kind: Kind, tool: &str) -> bool {
+    kind.folders().iter().any(|folder| repo.join(folder).join(format!("{tool}.rb")).is_file())
 }
 
 fn versions(value: &Value) -> String {
@@ -107,13 +125,17 @@ impl Brew {
         Ok(Brew { bin, prefix: PathBuf::from(prefix.trim()) })
     }
 
-    pub fn refresh_tap(&self, tap: &str) -> Result<(), String> {
-        let repo = exec::run(&self.bin, &["--repo", tap], QUERY_TIMEOUT)?;
-        let repo = repo.trim();
-        if !Path::new(repo).join(".git").exists() {
+    pub fn tap_repo(&self, tap: &str) -> Result<PathBuf, String> {
+        let repo = PathBuf::from(exec::run(&self.bin, &["--repo", tap], QUERY_TIMEOUT)?.trim());
+        if !repo.join(".git").exists() {
             return Err(format!("the tap {tap} is not installed here; run brew tap {tap}"));
         }
-        exec::run("git", &["-C", repo, "pull", "--ff-only", "--quiet"], TAP_TIMEOUT).map(|_| ())
+        Ok(repo)
+    }
+
+    pub fn refresh_tap(&self, repo: &Path) -> Result<(), String> {
+        let repo = repo.display().to_string();
+        exec::run("git", &["-C", &repo, "pull", "--ff-only", "--quiet"], TAP_TIMEOUT).map(|_| ())
     }
 
     pub fn installed(&self, tap: &str, kind: Kind) -> Result<Vec<String>, String> {
@@ -161,6 +183,20 @@ mod tests {
     fn only_the_taps_own_tools_are_kept_from_a_listing() {
         let listing = "git\nseethruhead/tap/nudge\nSeeThruHead/tap/reach\noven-sh/bun/bun\n";
         assert_eq!(in_tap(listing, "seethruhead/tap"), vec!["nudge", "reach"]);
+    }
+
+    #[test]
+    fn a_tool_is_offered_only_while_the_tap_still_has_its_file_for_that_kind() {
+        let repo = std::env::temp_dir().join(format!("sth-update-tap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(repo.join("Formula")).unwrap();
+        std::fs::create_dir_all(repo.join("Casks")).unwrap();
+        std::fs::write(repo.join("Formula/forkyard-bar.rb"), "").unwrap();
+        std::fs::write(repo.join("Casks/sth-dictate.rb"), "").unwrap();
+        assert!(offers(&repo, Kind::Formula, "forkyard-bar"));
+        assert!(!offers(&repo, Kind::Cask, "forkyard-bar"));
+        assert!(offers(&repo, Kind::Cask, "sth-dictate"));
+        assert!(!offers(&repo, Kind::Formula, "sth-dictate"));
     }
 
     #[test]
