@@ -37,7 +37,7 @@ A tool with no running service needs nothing: the next time it is run, it is the
 
 `herdr`, `herdr-core`, `herdr-app` and `hc` are never restarted, whatever the config says, because they host terminals and agents. They are upgraded and reported as "takes effect on next restart".
 
-sth-update upgrades itself last, then stops so its service starts the new version.
+sth-update upgrades itself last, then starts the new version in place of the running daemon.
 
 ## Dev builds in the way
 

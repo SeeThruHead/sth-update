@@ -10,7 +10,7 @@ A small Rust daemon that keeps the tools from one Homebrew tap current and resta
 
 ## How it starts
 
-`main.rs` dispatches one command. `run` is the daemon: load the config, run one pass, sleep for the interval, repeat. `now` runs one pass. Both go through `update`, which takes the lock, runs `pass::run`, logs, notifies and saves the state.
+`main.rs` dispatches one command. `run` is the daemon: load the config, run one pass, sleep for the interval, repeat. `now` runs one pass. When a pass upgraded sth-update itself, the daemon replaces itself with the new binary (exec of the path it was started with), so it does not depend on how the service manager treats a clean exit. Both go through `update`, which takes the lock, runs `pass::run`, logs, notifies and saves the state.
 
 ## Modules
 

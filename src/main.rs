@@ -11,8 +11,9 @@ use config::Config;
 use pass::{Context, Report, SELF};
 use services::{Action, Plan};
 use state::{State, Store};
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const USAGE: &str = "sth-update: keeps the tools from one Homebrew tap current on this machine
@@ -98,6 +99,14 @@ fn load(paths: &Paths) -> Result<Config, String> {
     config::load(&paths.config)
 }
 
+fn become_the_new_version(store: &Store) -> ExitCode {
+    let program = std::env::args_os().next().unwrap_or_else(|| SELF.into());
+    store.log("upgraded itself, starting the new version in place");
+    let error = Command::new(program).arg("run").exec();
+    store.log(&format!("could not start the new version, stopping so the service does: {error}"));
+    ExitCode::FAILURE
+}
+
 fn daemon() -> ExitCode {
     let paths = paths();
     paths.store.log(&format!("started {}", env!("CARGO_PKG_VERSION")));
@@ -107,8 +116,7 @@ fn daemon() -> ExitCode {
             Config::default()
         });
         if update(&paths, &config, true).upgraded_self() {
-            paths.store.log("upgraded itself, stopping so the service starts the new version");
-            return ExitCode::SUCCESS;
+            return become_the_new_version(&paths.store);
         }
         std::thread::sleep(config.interval());
     }
