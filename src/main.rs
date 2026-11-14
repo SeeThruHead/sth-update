@@ -61,7 +61,8 @@ fn tell(paths: &Paths, config: &Config, report: &Report, already: &str) -> Strin
     if signature.is_empty() || signature == already {
         return signature;
     }
-    let sent = notify::send(&config.notify, &notify::message(&notify::machine(), &report.failures));
+    let text = notify::message(&notify::machine(), &report.failures);
+    let sent = notify::send(&config.notify, &paths.home, &text);
     if let Err(error) = sent {
         paths.store.log(&format!("could not notify: {error}"));
     }

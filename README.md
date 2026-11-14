@@ -56,7 +56,8 @@ casks = true                 # macOS only
 shadow_dirs = ["~/.local/bin", "~/.cargo/bin", "~/.bun/bin"]
 
 # Where failures are sent. The message is added as the last argument.
-# Default: sth-seat notify where sth-seat is installed, else a desktop notification.
+# Default: sth-seat notify where sth-seat is set up, else a desktop notification on this machine.
+# The work Mac (sth-seat name work-mac) always notifies on itself, never on another machine.
 notify = ["sth-seat", "notify", "--title", "sth-update"]
 
 [restart]
