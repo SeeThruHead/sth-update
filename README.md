@@ -37,6 +37,8 @@ A tool with no running service needs nothing: the next time it is run, it is the
 
 `herdr`, `herdr-core`, `herdr-app` and `hc` are never restarted, whatever the config says, because they host terminals and agents. They are upgraded and reported as "takes effect on next restart".
 
+`sth-encode-worker` is left running by default, because a restart would kill the encode it is working on. It is upgraded and reported the same way, and runs the new version the next time it is restarted. `sth-encode-worker = "auto"` under `[restart]` restarts it like any other tool.
+
 sth-update upgrades itself last, then starts the new version in place of the running daemon.
 
 ## Dev builds in the way
@@ -58,7 +60,7 @@ shadow_dirs = ["~/.local/bin", "~/.cargo/bin", "~/.bun/bin"]
 notify = ["sth-seat", "notify", "--title", "sth-update"]
 
 [restart]
-sth-encode-worker = "never"            # upgrade it, leave the running one alone
+reach = "never"                        # upgrade it, leave the running one alone
 sth-seat = ["sth-seat", "install"]     # run this instead of restarting units
 nudge = "auto"                         # the default for every tool
 ```

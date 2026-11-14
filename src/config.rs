@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const PROTECTED: [&str; 4] = ["herdr", "herdr-core", "herdr-app", "hc"];
+const LEFT_RUNNING: [&str; 1] = ["sth-encode-worker"];
 const SHORTEST_INTERVAL: Duration = Duration::from_secs(300);
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -55,7 +56,8 @@ impl Config {
         if PROTECTED.contains(&tool) {
             return Rule::Mode(Mode::Never);
         }
-        self.restart.get(tool).cloned().unwrap_or(Rule::Mode(Mode::Auto))
+        let usual = if LEFT_RUNNING.contains(&tool) { Mode::Never } else { Mode::Auto };
+        self.restart.get(tool).cloned().unwrap_or(Rule::Mode(usual))
     }
 
     pub fn shadow_dirs(&self, home: &Path) -> Vec<PathBuf> {
@@ -106,6 +108,13 @@ mod tests {
         let config = parse("[restart]\nherdr-core = \"auto\"\nherdr-app = [\"pkill\", \"herdr-app\"]\n").unwrap();
         assert_eq!(config.rule("herdr-core"), Rule::Mode(Mode::Never));
         assert_eq!(config.rule("herdr-app"), Rule::Mode(Mode::Never));
+    }
+
+    #[test]
+    fn the_encode_worker_is_left_running_unless_the_config_says_otherwise() {
+        assert_eq!(parse("").unwrap().rule("sth-encode-worker"), Rule::Mode(Mode::Never));
+        let chosen = parse("[restart]\nsth-encode-worker = \"auto\"\n").unwrap();
+        assert_eq!(chosen.rule("sth-encode-worker"), Rule::Mode(Mode::Auto));
     }
 
     #[test]
