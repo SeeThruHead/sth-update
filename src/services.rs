@@ -69,7 +69,8 @@ impl Platform {
 
     pub fn active(&self, unit: &Unit) -> bool {
         if self.mac {
-            return exec::run("launchctl", &["print", &format!("{}/{}", self.domain, unit.id)], TIMEOUT).is_ok();
+            let printed = exec::run("launchctl", &["print", &format!("{}/{}", self.domain, unit.id)], TIMEOUT);
+            return printed.is_ok_and(|description| launchd_running(&description));
         }
         exec::run("systemctl", &["--user", "is-active", "--quiet", &unit.id], TIMEOUT).is_ok()
     }
@@ -117,6 +118,10 @@ pub fn needles(prefix: &Path, tool: &str, binaries: &[String]) -> Vec<String> {
 
 pub fn systemd_exec(text: &str) -> String {
     text.lines().filter(|line| line.trim_start().starts_with("ExecStart")).collect::<Vec<_>>().join("\n")
+}
+
+pub fn launchd_running(description: &str) -> bool {
+    description.lines().any(|line| line.trim() == "state = running")
 }
 
 pub fn plist_label(text: &str) -> Option<String> {
@@ -174,6 +179,12 @@ mod tests {
         let wanted = needles(Path::new("/opt/homebrew"), "sth-seat", &["sth-seat".to_string()]);
         assert!(wanted.iter().any(|needle| mentions(plist, needle)));
         assert_eq!(plist_label(plist), Some("sth-seat".to_string()));
+    }
+
+    #[test]
+    fn a_launch_agent_counts_as_running_only_when_launchd_says_so() {
+        assert!(launchd_running("gui/501/sh.brew.nudge = {\n\tactive count = 1\n\tstate = running\n}"));
+        assert!(!launchd_running("gui/501/sh.brew.forkyard-bar = {\n\tstate = not running\n\tlast exit code = 0\n}"));
     }
 
     #[test]
