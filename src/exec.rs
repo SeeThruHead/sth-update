@@ -15,6 +15,7 @@ const ENVIRONMENT: [(&str, &str); 6] = [
     ("GIT_TERMINAL_PROMPT", "0"),
 ];
 
+const SHOWN_ARGS: usize = 4;
 const USUAL_PLACES: [&str; 3] = ["/opt/homebrew/bin", "/home/linuxbrew/.linuxbrew/bin", "/usr/local/bin"];
 
 pub fn find(program: &str) -> Option<PathBuf> {
@@ -23,7 +24,18 @@ pub fn find(program: &str) -> Option<PathBuf> {
     std::env::split_paths(&path).chain(usual).map(|dir| dir.join(program)).find(|candidate| candidate.is_file())
 }
 
-pub fn run(program: impl AsRef<OsStr>, args: &[&str], timeout: Duration) -> Result<String, String> {
+pub struct Finished {
+    pub succeeded: bool,
+    pub stdout: String,
+    pub failure: String,
+}
+
+fn shown(name: &str, args: &[&str]) -> String {
+    let more = if args.len() > SHOWN_ARGS { " ..." } else { "" };
+    format!("{name} {}{more}", args.iter().take(SHOWN_ARGS).copied().collect::<Vec<_>>().join(" "))
+}
+
+pub fn finish(program: impl AsRef<OsStr>, args: &[&str], timeout: Duration) -> Result<Finished, String> {
     let name = program.as_ref().to_string_lossy().to_string();
     let child = Command::new(program.as_ref())
         .args(args)
@@ -47,15 +59,18 @@ pub fn run(program: impl AsRef<OsStr>, args: &[&str], timeout: Duration) -> Resu
     let _ = finished.send(());
     let timed_out = watchdog.join().unwrap_or(false);
     if timed_out {
-        return Err(format!("{name} {} did not finish in {}", args.join(" "), humantime::format_duration(timeout)));
+        return Err(format!("{} did not finish in {}", shown(&name, args), humantime::format_duration(timeout)));
     }
     let output = output.map_err(|error| format!("{name} did not report a result: {error}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    if output.status.success() {
-        return Ok(stdout);
-    }
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    Err(format!("{name} {}: {}", args.join(" "), tail(&stderr, &stdout)))
+    let failure = format!("{}: {}", shown(&name, args), tail(&stderr, &stdout));
+    Ok(Finished { succeeded: output.status.success(), stdout, failure })
+}
+
+pub fn run(program: impl AsRef<OsStr>, args: &[&str], timeout: Duration) -> Result<String, String> {
+    let finished = finish(program, args, timeout)?;
+    if finished.succeeded { Ok(finished.stdout) } else { Err(finished.failure) }
 }
 
 fn tail(stderr: &str, stdout: &str) -> String {
@@ -84,6 +99,21 @@ mod tests {
     fn a_command_that_outlives_its_timeout_is_killed_and_reported() {
         let error = run("sh", &["-c", "sleep 30"], Duration::from_millis(200)).unwrap_err();
         assert!(error.contains("did not finish in 200ms"), "{error}");
+    }
+
+    #[test]
+    fn a_failed_command_still_hands_over_what_it_printed() {
+        let finished = finish("sh", &["-c", "echo kept; exit 1"], Duration::from_secs(5)).unwrap();
+        assert!(!finished.succeeded);
+        assert_eq!(finished.stdout, "kept\n");
+    }
+
+    #[test]
+    fn a_long_command_is_named_by_its_first_arguments_only() {
+        assert_eq!(
+            shown("brew", &["outdated", "--json=v2", "--formula", "a", "b", "c"]),
+            "brew outdated --json=v2 --formula a ..."
+        );
     }
 
     #[test]

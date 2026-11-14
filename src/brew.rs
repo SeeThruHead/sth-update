@@ -127,7 +127,9 @@ impl Brew {
         let full: Vec<String> = tools.iter().map(|tool| format!("{tap}/{tool}")).collect();
         let args: Vec<&str> =
             ["outdated", "--json=v2", kind.flag()].into_iter().chain(full.iter().map(String::as_str)).collect();
-        parse_outdated(&exec::run(&self.bin, &args, QUERY_TIMEOUT)?, kind)
+        let finished = exec::finish(&self.bin, &args, QUERY_TIMEOUT)?;
+        parse_outdated(&finished.stdout, kind)
+            .map_err(|error| if finished.succeeded { error } else { finished.failure })
     }
 
     pub fn upgrade(&self, tap: &str, item: &Outdated) -> Result<(), String> {
