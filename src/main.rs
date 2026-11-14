@@ -140,7 +140,17 @@ fn section(title: &str, lines: &[String]) {
     lines.iter().for_each(|line| println!("  {line}"));
 }
 
+fn daemon_line(status: Option<String>) -> String {
+    match status.as_deref() {
+        Some("started") => "daemon: running".to_string(),
+        Some(other) => format!("daemon: not running (brew services says {other}); brew services start {SELF}"),
+        None => format!("daemon: not set up as a brew service; brew services start {SELF}"),
+    }
+}
+
 fn status() -> ExitCode {
+    let service = brew::Brew::locate().ok().and_then(|brew| brew.service_status(SELF));
+    println!("{}", daemon_line(service));
     let State { last, history, .. } = paths().store.load();
     let Some(report) = last else {
         println!("sth-update has not run yet; sth-update now runs it");

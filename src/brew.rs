@@ -118,6 +118,12 @@ pub fn parse_services(json: &str) -> Vec<Service> {
     entries.iter().filter_map(service_entry).collect()
 }
 
+pub fn service_status(json: &str, name: &str) -> Option<String> {
+    let entries = serde_json::from_str::<Value>(json).ok()?.as_array()?.clone();
+    let entry = entries.iter().find(|entry| entry.get("name").and_then(Value::as_str) == Some(name))?;
+    Some(entry.get("status")?.as_str()?.to_string())
+}
+
 impl Brew {
     pub fn locate() -> Result<Brew, String> {
         let bin = binary().ok_or("brew was not found on PATH or in its usual places; set STH_UPDATE_BREW")?;
@@ -163,6 +169,11 @@ impl Brew {
         exec::run(&self.bin, &["services", "list", "--json"], QUERY_TIMEOUT)
             .map(|json| parse_services(&json))
             .unwrap_or_default()
+    }
+
+    pub fn service_status(&self, name: &str) -> Option<String> {
+        let json = exec::run(&self.bin, &["services", "list", "--json"], QUERY_TIMEOUT).ok()?;
+        service_status(&json, name)
     }
 
     pub fn restart_service(&self, name: &str) -> Result<(), String> {
@@ -234,6 +245,14 @@ mod tests {
     #[test]
     fn unreadable_outdated_output_is_an_error_not_an_empty_list() {
         assert!(parse_outdated("Error: something", Kind::Formula).is_err());
+    }
+
+    #[test]
+    fn a_services_status_is_read_by_name_and_missing_when_brew_does_not_list_it() {
+        let json = r#"[{"name":"nudge","status":"started"},{"name":"sth-update","status":"none"}]"#;
+        assert_eq!(service_status(json, "sth-update"), Some("none".to_string()));
+        assert_eq!(service_status(json, "nudge"), Some("started".to_string()));
+        assert_eq!(service_status(json, "reach"), None);
     }
 
     #[test]
