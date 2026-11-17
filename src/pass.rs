@@ -24,11 +24,13 @@ pub struct Upgraded {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Report {
     pub at: u64,
     pub upgraded: Vec<Upgraded>,
     pub failures: Vec<String>,
     pub shadowed: Vec<Shadow>,
+    pub notes: Vec<String>,
 }
 
 impl Upgraded {
@@ -190,6 +192,10 @@ pub fn run(config: &Config, home: &Path, at: u64, by_daemon: bool) -> Report {
     };
     let refresh =
         context.brew.refresh_tap(&context.repo).err().map(|error| format!("refreshing {} failed: {error}", config.tap));
+    let trusted = context.brew.trust(&config.tap);
+    let distrust = trusted.clone().err().map(|error| format!("trusting {} failed: {error}", config.tap));
+    let notes =
+        trusted.ok().filter(|done| *done).map(|_| format!("brew did not trust {}, so it was trusted", config.tap));
     let (outdated, unasked) = context.outdated();
     let outdated = self_last(outdated);
     let outcomes: Vec<Outcome> = outdated.iter().map(|item| context.upgrade(item, at, by_daemon)).collect();
@@ -197,9 +203,14 @@ pub fn run(config: &Config, home: &Path, at: u64, by_daemon: bool) -> Report {
     let installed = context.installed().unwrap_or_default();
     let shadowed: Vec<Shadow> = installed.iter().flat_map(|tool| context.shadows(tool, home)).collect();
     let step_failures = outcomes.iter().flat_map(|outcome| outcome.failures.clone());
-    let failures =
-        refresh.into_iter().chain(unasked).chain(step_failures).chain(in_the_way(&upgraded, &shadowed)).collect();
-    Report { at, upgraded, failures, shadowed }
+    let failures = refresh
+        .into_iter()
+        .chain(distrust)
+        .chain(unasked)
+        .chain(step_failures)
+        .chain(in_the_way(&upgraded, &shadowed))
+        .collect();
+    Report { at, upgraded, failures, shadowed, notes: notes.into_iter().collect() }
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 [package]
 name = "sth-update"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 description = "Keeps the tools from one Homebrew tap current on this machine, and restarts their services"
 license = "MIT"

@@ -84,6 +84,7 @@ fn update(paths: &Paths, config: &Config, by_daemon: bool) -> Report {
         store.log(&format!("running without the lock: {error}"));
     }
     let report = pass::run(config, &paths.home, now(), by_daemon);
+    report.notes.iter().for_each(|note| store.log(note));
     report.upgraded.iter().for_each(|item| store.log(&format!("upgraded {}", item.line())));
     report.failures.iter().for_each(|failure| store.log(&format!("failed: {failure}")));
     store.log(&summary(&report));
@@ -160,6 +161,7 @@ fn status() -> ExitCode {
     println!("last run: {}, {}", when(report.at), summary(&report));
     section("upgraded", &report.upgraded.iter().map(pass::Upgraded::line).collect::<Vec<_>>());
     section("failed", &report.failures);
+    section("done along the way", &report.notes);
     section(
         "dev builds in the way",
         &report.shadowed.iter().map(|shadow| format!("{}: {}", shadow.tool, shadow.path)).collect::<Vec<_>>(),

@@ -124,7 +124,22 @@ pub fn service_status(json: &str, name: &str) -> Option<String> {
     Some(entry.get("status")?.as_str()?.to_string())
 }
 
+pub fn trusts(json: &str, tap: &str) -> Option<bool> {
+    let taps = serde_json::from_str::<Value>(json).ok()?.get("taps")?.as_array()?.clone();
+    Some(taps.iter().filter_map(Value::as_str).any(|trusted| trusted.eq_ignore_ascii_case(tap)))
+}
+
 impl Brew {
+    pub fn trust(&self, tap: &str) -> Result<bool, String> {
+        let Ok(json) = exec::run(&self.bin, &["trust", "--json=v1"], QUERY_TIMEOUT) else {
+            return Ok(false);
+        };
+        if trusts(&json, tap) != Some(false) {
+            return Ok(false);
+        }
+        exec::run(&self.bin, &["trust", tap], QUERY_TIMEOUT).map(|_| true)
+    }
+
     pub fn locate() -> Result<Brew, String> {
         let bin = binary().ok_or("brew was not found on PATH or in its usual places; set STH_UPDATE_BREW")?;
         let prefix = exec::run(&bin, &["--prefix"], QUERY_TIMEOUT)?;
@@ -264,5 +279,13 @@ mod tests {
         };
         assert_eq!(parse_services(json), vec![nudge]);
         assert!(parse_services("not json").is_empty());
+    }
+
+    #[test]
+    fn a_tap_is_trusted_only_when_brew_lists_it() {
+        let json = r#"{"taps":["oven-sh/bun","SeeThruHead/tap"],"formulae":["seethruhead/tap/nudge"]}"#;
+        assert_eq!(trusts(json, "seethruhead/tap"), Some(true));
+        assert_eq!(trusts(r#"{"taps":[],"formulae":["seethruhead/tap/nudge"]}"#, "seethruhead/tap"), Some(false));
+        assert_eq!(trusts("not json", "seethruhead/tap"), None);
     }
 }

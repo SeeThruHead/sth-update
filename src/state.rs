@@ -96,7 +96,7 @@ mod tests {
     fn a_saved_state_reads_back_the_same() {
         let store = store("roundtrip");
         let report =
-            Report { at: 5, upgraded: vec![upgrade("nudge")], failures: vec!["boom".into()], shadowed: Vec::new() };
+            Report { at: 5, upgraded: vec![upgrade("nudge")], failures: vec!["boom".into()], ..Report::default() };
         let state = State::default().after(&report, "boom".into());
         store.save(&state).unwrap();
         assert_eq!(store.load(), state);

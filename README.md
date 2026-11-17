@@ -4,7 +4,7 @@ Keeps the tools from one Homebrew tap current on this machine. A release reaches
 
 Every hour (and on `sth-update now`) it:
 
-1. Refreshes only the tap (`git pull --ff-only` in the tap's checkout). It never runs a full `brew update`.
+1. Refreshes only the tap (`git pull --ff-only` in the tap's checkout). It never runs a full `brew update`. If Homebrew no longer trusts the tap (Homebrew 7 asks for `brew trust`), it trusts it again, and only that tap.
 2. Upgrades only the tap's installed formulas and casks that are outdated, one at a time. Other brew packages are left alone, except a dependency a tool's own upgrade needs.
 3. Restarts the services that run an upgraded tool, so they run the new binary.
 4. Records what happened, and notifies you only if something failed.
