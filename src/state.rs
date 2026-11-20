@@ -57,7 +57,7 @@ impl Store {
 
     pub fn log(&self, line: &str) {
         let stamped = format!("{} {line}", humantime::format_rfc3339_seconds(SystemTime::now()));
-        eprintln!("{stamped}");
+        crate::out::warn(&stamped);
         let _ = fs::create_dir_all(&self.dir);
         let opened = OpenOptions::new().create(true).append(true).open(self.file("log"));
         let _ = opened.and_then(|mut file| writeln!(file, "{stamped}"));

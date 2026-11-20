@@ -2,12 +2,14 @@ mod brew;
 mod config;
 mod exec;
 mod notify;
+mod out;
 mod pass;
 mod services;
 mod shadow;
 mod state;
 
 use config::Config;
+use out::{say, warn};
 use pass::{Context, Report, SELF};
 use services::{Action, Plan};
 use state::{State, Store};
@@ -138,8 +140,8 @@ fn section(title: &str, lines: &[String]) {
     if lines.is_empty() {
         return;
     }
-    println!("{title}:");
-    lines.iter().for_each(|line| println!("  {line}"));
+    say(format!("{title}:"));
+    lines.iter().for_each(|line| say(format!("  {line}")));
 }
 
 fn daemon_line(status: Option<String>) -> String {
@@ -152,13 +154,13 @@ fn daemon_line(status: Option<String>) -> String {
 
 fn status() -> ExitCode {
     let service = brew::Brew::locate().ok().and_then(|brew| brew.service_status(SELF));
-    println!("{}", daemon_line(service));
+    say(daemon_line(service));
     let State { last, history, .. } = paths().store.load();
     let Some(report) = last else {
-        println!("sth-update has not run yet; sth-update now runs it");
+        say("sth-update has not run yet; sth-update now runs it");
         return ExitCode::SUCCESS;
     };
-    println!("last run: {}, {}", when(report.at), summary(&report));
+    say(format!("last run: {}, {}", when(report.at), summary(&report)));
     section("upgraded", &report.upgraded.iter().map(pass::Upgraded::line).collect::<Vec<_>>());
     section("failed", &report.failures);
     section("done along the way", &report.notes);
@@ -218,14 +220,14 @@ fn check() -> ExitCode {
         Err(error) => return fail(&error),
     };
     let (outdated, unasked) = context.outdated();
-    println!(
+    say(format!(
         "brew {}, tap {}, every {}",
         context.brew.bin.display(),
         config.tap,
         humantime::format_duration(config.interval())
-    );
-    println!("the tap is not refreshed by check, so outdated is as of the last run");
-    installed.iter().for_each(|tool| println!("{}", tool_line(&context, &paths, tool, &outdated)));
+    ));
+    say("the tap is not refreshed by check, so outdated is as of the last run");
+    installed.iter().for_each(|tool| say(tool_line(&context, &paths, tool, &outdated)));
     section("installed but no longer in the tap, left alone", &context.dropped());
     section("could not ask brew", &unasked);
     ExitCode::SUCCESS
@@ -233,12 +235,12 @@ fn check() -> ExitCode {
 
 fn show_log() -> ExitCode {
     let lines = paths().store.read_log();
-    lines.iter().skip(lines.len().saturating_sub(60)).for_each(|line| println!("{line}"));
+    lines.iter().skip(lines.len().saturating_sub(60)).for_each(say);
     ExitCode::SUCCESS
 }
 
 fn fail(message: &str) -> ExitCode {
-    eprintln!("sth-update: {message}");
+    warn(format!("sth-update: {message}"));
     ExitCode::FAILURE
 }
 
@@ -251,11 +253,11 @@ fn main() -> ExitCode {
         ["check"] => check(),
         ["log"] => show_log(),
         ["--version" | "-V"] => {
-            println!("sth-update {}", env!("CARGO_PKG_VERSION"));
+            say(format!("sth-update {}", env!("CARGO_PKG_VERSION")));
             ExitCode::SUCCESS
         }
         ["--help" | "-h"] => {
-            println!("{USAGE}");
+            say(USAGE);
             ExitCode::SUCCESS
         }
         _ => fail(&format!("unknown command\n\n{USAGE}")),
